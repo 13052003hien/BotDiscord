@@ -1,7 +1,9 @@
 require('dotenv/config');
-const { Client, IntentsBitField } = require('discord.js');
+const { Client, IntentsBitField, Collection } = require('discord.js');
 const axios = require('axios');
 const logger = require('./utils/logger');
+const fs = require('fs');
+const path = require('path');
 
 // Replace console.log/error with logger
 process.on('unhandledRejection', (error) => {
@@ -26,11 +28,33 @@ const client = new Client({
     IntentsBitField.Flags.GuildMessages,
     IntentsBitField.Flags.MessageContent,
     IntentsBitField.Flags.GuildMembers,
-    // Removed GuildVoiceStates intent as it's no longer needed
   ],
 });
 
-// Add debug trace points
+// Single command loading system for slash commands
+client.commands = new Collection();
+const commandsPath = path.join(__dirname, 'commands');
+const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+
+for (const file of commandFiles) {
+  const filePath = path.join(commandsPath, file);
+  try {
+    const command = require(filePath);
+    // Verify command has required slash command properties
+    if ('data' in command && 'execute' in command) {
+      client.commands.set(command.data.name, command);
+      logger.debug(`Loaded slash command: ${command.data.name}`, {
+        file,
+        description: command.data.description
+      });
+    } else {
+      logger.warn(`Command file ${file} is missing required slash command properties`);
+    }
+  } catch (error) {
+    logger.error(`Error loading command file ${file}:`, { error: error.message });
+  }
+}
+
 client.on('ready', () => {
   logger.trace('Bot initialization', {
     intents: client.options.intents,
@@ -103,50 +127,80 @@ client.on('guildMemberAdd', async (member) => {
   }
 });
 
-client.on('messageCreate', async (message) => {
-  if (message.author.bot) return;
-  if (message.channel.id !== process.env.CHANNEL_ID) return;
-  if (message.content.startsWith('!')) return;
+// Replace messageCreate event with interactionCreate for slash commands
+client.on('interactionCreate', async interaction => {
+  if (!interaction.isChatInputCommand()) return;
+
+  const command = client.commands.get(interaction.commandName);
+  if (!command) {
+    logger.warn(`No command matching ${interaction.commandName} was found.`);
+    return;
+  }
 
   try {
-    await message.channel.sendTyping();
-
-    let prevMessages = await message.channel.messages.fetch({ limit: 15 });
-    prevMessages.reverse();
-
-    let conversationText = '';
-    prevMessages.forEach((msg) => {
-      if (msg.content.startsWith('!')) return;
-      if (msg.author.id !== client.user.id && message.author.bot) return;
-      if (msg.author.id !== message.author.id) return;
-      conversationText += msg.content + '\n';
+    await command.execute(interaction);
+    logger.debug(`Slash command executed: ${interaction.commandName}`, {
+      user: interaction.user.tag,
+      guild: interaction.guild.name
     });
-
-    const response = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${process.env.GOOGLE_API_KEY}`,
-      {
-        contents: [{
-          parts: [{
-            text: `Previous conversation:\n${conversationText}\nUser (cậu - MoMo): ${message.content}\nHãy trả lời xưng hô như một nhân vật anime ngọt ngào, gọi người kia là "cậu" và xưng là "MoMo". ٩(◕‿◕｡)۶ (Ví dụ: "Cậu ơi, MoMo đây~") :3`
-          }]
-        }],
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 2048,
-        }
-      },
-      {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    const botMessage = response.data.candidates[0].content.parts[0].text;
-    message.reply(botMessage);
   } catch (error) {
-    logger.error('Error processing message', { error: error.message, stack: error.stack });
-    message.reply('Sorry, I encountered an error while processing your request.');
+    logger.error(`Command error: ${interaction.commandName}`, { error: error.message });
+    const errorMessage = { content: 'Có lỗi xảy ra khi thực hiện lệnh (╥﹏╥)', ephemeral: true };
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp(errorMessage);
+    } else {
+      await interaction.reply(errorMessage);
+    }
+  }
+});
+
+// Handle normal chat messages
+client.on('messageCreate', async (message) => {
+  if (message.author.bot) return;
+
+  if (message.channel.id === process.env.CHANNEL_ID) {
+    if (message.content.startsWith('!')) return;
+
+    try {
+      await message.channel.sendTyping();
+
+      let prevMessages = await message.channel.messages.fetch({ limit: 15 });
+      prevMessages.reverse();
+
+      let conversationText = '';
+      prevMessages.forEach((msg) => {
+        if (msg.content.startsWith('!')) return;
+        if (msg.author.id !== client.user.id && message.author.bot) return;
+        if (msg.author.id !== message.author.id) return;
+        conversationText += msg.content + '\n';
+      });
+
+      const response = await axios.post(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${process.env.GOOGLE_API_KEY}`,
+        {
+          contents: [{
+            parts: [{
+              text: `Previous conversation:\n${conversationText}\nUser (cậu - MoMo): ${message.content}\nHãy trả lời xưng hô như một nhân vật anime ngọt ngào, gọi người kia là "cậu" và xưng là "MoMo". ٩(◕‿◕｡)۶ (Ví dụ: "Cậu ơi, MoMo đây~") :3`
+            }]
+          }],
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 2048,
+          }
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      const botMessage = response.data.candidates[0].content.parts[0].text;
+      message.reply(botMessage);
+    } catch (error) {
+      logger.error('Error processing message', { error: error.message, stack: error.stack });
+      message.reply('Sorry, I encountered an error while processing your request.');
+    }
   }
 });
 
