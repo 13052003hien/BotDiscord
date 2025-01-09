@@ -7,11 +7,28 @@ const client = new Client({
     IntentsBitField.Flags.Guilds,
     IntentsBitField.Flags.GuildMessages,
     IntentsBitField.Flags.MessageContent,
+    IntentsBitField.Flags.GuildMembers, // Add this intent
   ],
 });
 
 client.on('ready', () => {
   console.log('The bot is online!');
+});
+
+// Add welcome message event handler
+client.on('guildMemberAdd', async (member) => {
+  try {
+    const welcomeChannel = member.guild.channels.cache.get(process.env.WELCOME_CHANNEL_ID);
+    if (!welcomeChannel) {
+      console.error('Welcome channel not found!');
+      return;
+    }
+
+    const welcomeMessage = `Yahoooo~ Chào mừng ${member.user.username} đến với server của chúng mình! MoMo rất vui khi được gặp cậu ٩(◕‿◕｡)۶`;
+    await welcomeChannel.send(welcomeMessage);
+  } catch (error) {
+    console.error('Error sending welcome message:', error);
+  }
 });
 
 client.on('messageCreate', async (message) => {
