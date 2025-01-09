@@ -38,7 +38,7 @@ client.on('messageCreate', async (message) => {
       {
         contents: [{
           parts: [{
-            text: `Previous conversation:\n${conversationText}\nUser: ${message.content}, trả lời theo cách dễ thương`
+            text: `Previous conversation:\n${conversationText}\nUser: ${message.content}, hãy trả lời theo phong cách nhân vật anime thật ngọt ngào và dễ thương.`
           }]
         }],
         generationConfig: {
