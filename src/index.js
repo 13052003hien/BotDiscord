@@ -26,7 +26,7 @@ const client = new Client({
     IntentsBitField.Flags.GuildMessages,
     IntentsBitField.Flags.MessageContent,
     IntentsBitField.Flags.GuildMembers,
-    IntentsBitField.Flags.GuildVoiceStates, // Add this intent
+    // Removed GuildVoiceStates intent as it's no longer needed
   ],
 });
 
@@ -57,28 +57,32 @@ client.on('error', error => {
   logger.error('Bot Error', { error: error.message, stack: error.stack });
 });
 
+// Add welcome message tracker
+const recentWelcomes = new Set();
+
 client.on('guildMemberAdd', async (member) => {
-  logger.trace('Member add event triggered', {
-    member: {
-      id: member.user.id,
-      username: member.user.username,
-      joinedAt: member.joinedAt
-    },
-    guild: {
-      id: member.guild.id,
-      name: member.guild.name,
-      memberCount: member.guild.memberCount
-    }
-  });
-  logger.info('New member joined', {
+  // Check if we've already welcomed this user recently
+  const userId = member.user.id;
+  if (recentWelcomes.has(userId)) {
+    logger.debug('Skipping duplicate welcome message', { userId });
+    return;
+  }
+
+  // Add user to recent welcomes
+  recentWelcomes.add(userId);
+
+  // Remove from set after 10 seconds
+  setTimeout(() => {
+    recentWelcomes.delete(userId);
+  }, 10000);
+
+  logger.debug('Sending welcome message', {
     username: member.user.username,
-    userId: member.user.id,
-    guild: member.guild.name
+    userId: member.user.id
   });
-  
+
   try {
-    await member.guild.channels.fetch(); // Fetch all channels if not cached
-    const welcomeChannel = member.guild.channels.cache.get('1326839185973317663');
+    const welcomeChannel = member.guild.channels.cache.get(process.env.WELCOME_CHANNEL_ID);
     
     if (!welcomeChannel) {
       logger.error('Welcome channel not found!');
@@ -91,11 +95,9 @@ client.on('guildMemberAdd', async (member) => {
   } catch (error) {
     logger.error('Welcome message failed', {
       error: error.message,
-      stack: error.stack,
       member: {
         username: member.user.username,
-        id: member.user.id,
-        guild: member.guild.name
+        id: member.user.id
       }
     });
   }
@@ -145,52 +147,6 @@ client.on('messageCreate', async (message) => {
   } catch (error) {
     logger.error('Error processing message', { error: error.message, stack: error.stack });
     message.reply('Sorry, I encountered an error while processing your request.');
-  }
-});
-
-client.on('voiceStateUpdate', async (oldState, newState) => {
-  logger.trace('Voice state update', {
-    user: {
-      id: newState.member.user.id,
-      username: newState.member.user.username
-    },
-    oldChannel: oldState.channel?.name,
-    newChannel: newState.channel?.name,
-    timestamp: new Date().toISOString()
-  });
-  if (!oldState.channelId && newState.channelId) {
-    logger.info('User joined voice channel', {
-      username: newState.member.user.username,
-      channelName: newState.channel.name
-    });
-    
-    try {
-      const channel = newState.guild.channels.cache.get(process.env.WELCOME_CHANNEL_ID);
-      
-      if (!channel) {
-        logger.error('Voice welcome channel not found!', {
-          channelId: process.env.WELCOME_CHANNEL_ID,
-          guild: newState.guild.name,
-          guildId: newState.guild.id
-        });
-        return;
-      }
-
-      if (!channel.permissionsFor(client.user).has('SendMessages')) {
-        logger.error('Bot missing permissions in channel', { channelName: channel.name, required: 'SendMessages' });
-        return;
-      }
-
-      await channel.send(`Yahoooo~ Chào mừng <@${newState.member.user.id}> đến kênh voice **${newState.channel.name}**! ٩(◕‿◕｡)۶`);
-      logger.info(`Successfully sent voice welcome message for ${newState.member.user.username}`);
-    } catch (error) {
-      logger.error('Voice welcome message failed', {
-        error: error.message,
-        stack: error.stack,
-        user: newState.member.user.username,
-        channel: newState.channel.name
-      });
-    }
   }
 });
 

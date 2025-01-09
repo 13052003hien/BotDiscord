@@ -1,8 +1,7 @@
 const winston = require('winston');
-const path = require('path');
-require('winston/lib/winston/config');  // Add this line for colors support
+const path = require('path');  // Add this line
+require('winston/lib/winston/config');
 
-// Custom log levels
 const levels = {
   error: 0,
   warn: 1,
@@ -16,8 +15,7 @@ const logger = winston.createLogger({
   level: process.env.DEBUG ? 'trace' : 'info',
   format: winston.format.combine(
     winston.format.timestamp(),
-    winston.format.errors({ stack: true }),
-    winston.format.json()
+    winston.format.errors({ stack: true })
   ),
   transports: [
     new winston.transports.Console({
@@ -31,29 +29,23 @@ const logger = winston.createLogger({
           }`;
         })
       )
-    }),
-    new winston.transports.File({ 
-      filename: path.join(__dirname, '../../logs/debug.log'),
-      level: 'debug'
-    }),
-    new winston.transports.File({ 
-      filename: path.join(__dirname, '../../logs/error.log'),
-      level: 'error'
-    }),
-    new winston.transports.File({ 
-      filename: path.join(__dirname, '../../logs/combined.log')
     })
   ]
 });
 
-// Add source location to logs
+// Simplified source location tracking
 const addSourceInfo = (info) => {
-  const stack = new Error().stack;
-  const callerLine = stack.split('\n')[3];
-  const match = callerLine.match(/\((.+?):(\d+):\d+\)$/);
-  if (match) {
-    info.file = path.basename(match[1]);
-    info.line = match[2];
+  try {
+    const stack = new Error().stack;
+    const callerLine = stack.split('\n')[3];
+    const match = callerLine.match(/\((.+?):(\d+):\d+\)$/);
+    if (match) {
+      info.file = path.basename(match[1]);
+      info.line = match[2];
+    }
+  } catch (error) {
+    info.file = 'unknown';
+    info.line = '0';
   }
   return info;
 };
