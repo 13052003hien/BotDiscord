@@ -4,11 +4,14 @@
     "description": "Discord bot using Gemini API",
     "main": "index.js",
     "scripts": {
-      "start": "node index.js"
+        "start": "node src/index.js",
+        "debug": "set DEBUG=true && node src/index.js",
+        "debug:dev": "nodemon --inspect src/index.js"
     },
     "dependencies": {
-      "axios": "^1.6.7",
-      "discord.js": "^14.14.1",
-      "dotenv": "^16.4.5"
+        "axios": "^1.6.7",
+        "discord.js": "^14.14.1",
+        "dotenv": "^16.4.5",
+        "winston": "^3.11.0"
     }
-  }
+}
